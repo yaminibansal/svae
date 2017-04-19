@@ -77,14 +77,14 @@ def local_meanfield(global_natparam, node_potentials):
         label_meanfield(label_global, gaussian_globals, gaussian_stats)
 
     # collect sufficient statistics for gmm prior (sum across conditional iid)
-    dirichlet_stats = np.sum(label_stats, 0)
+    dirichlet_stats = np.concatenate((np.sum(label_stats[:,:-1], 0), np.array([np.sum(np.sum(label_stats[:,i+1:]), 0) for i in range(label_stats.shape[1]-1)]) ))
     niw_stats = np.tensordot(label_stats, gaussian_stats, [0, 0])
 
     local_stats = label_stats, gaussian_stats
     prior_stats = dirichlet_stats, niw_stats
     natparam = label_natparam, gaussian_natparam
     kl = label_kl + gaussian_kl
-
+ 
     return local_stats, prior_stats, natparam, kl
 
 def meanfield_fixed_point(label_global, gaussian_globals, node_potentials, tol=1e-3, max_iter=100):
@@ -131,13 +131,13 @@ def label_meanfield(label_global, gaussian_globals, gaussian_stats):
     # gaussian_globals = \eta_x^0(\theta)
     
     node_potentials = np.tensordot(gaussian_stats, gaussian_globals, [[1,2], [1,2]])
-    natparam = node_potentials + np.append(label_global, 0)
+    natparam = node_potentials + label_global
     stats = categorical.expectedstats(natparam)
     kl = np.tensordot(stats, node_potentials) - categorical.logZ(natparam)
     return natparam, stats, kl
 
 def initialize_meanfield(label_global, node_potentials):
-    T, K = node_potentials.shape[0], label_global.shape[0]+1
+    T, K = node_potentials.shape[0], label_global.shape[0]
     return normalize(npr.rand(T, K))
 
 ### plotting util for 2D

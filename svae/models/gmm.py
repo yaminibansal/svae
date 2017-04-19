@@ -60,23 +60,28 @@ def prior_kl(global_natparam, prior_natparam):
 ### GMM mean field functions
 
 def local_meanfield(global_natparam, node_potentials):
+    # global_natparam = \eta_{\theta}^0
+    # node_potentials = r(\phi, y)
+    
     dirichlet_natparam, niw_natparams = global_natparam
     node_potentials = gaussian.pack_dense(*node_potentials)
 
-    # compute expected global parameters using current global factors
+    #### compute expected global parameters using current global factors
+    # label_global = E_{q(\pi)}[t(\pi)] here q(\pi) is posterior which is dirichlet with parameter dirichlet_natparam and t is [log\pi_1, log\pi_2....]
+    # gaussian_globals = E_{q(\mu, \Sigma)}[t(\mu, \Sigma)] here q(\mu, \Sigma) is posterior which is NIW    
     label_global = dirichlet.expectedstats(dirichlet_natparam)
     gaussian_globals = niw.expectedstats(niw_natparams)
 
-    # compute mean field fixed point using unboxed node_potentials
+    #### compute mean field fixed point using unboxed node_potentials
     label_stats = meanfield_fixed_point(label_global, gaussian_globals, getval(node_potentials))
 
-    # compute values that depend directly on boxed node_potentials at optimum
+    #### compute values that depend directly on boxed node_potentials at optimum
     gaussian_natparam, gaussian_stats, gaussian_kl = \
         gaussian_meanfield(gaussian_globals, node_potentials, label_stats)
     label_natparam, label_stats, label_kl = \
         label_meanfield(label_global, gaussian_globals, gaussian_stats)
 
-    # collect sufficient statistics for gmm prior (sum across conditional iid)
+    #### collect sufficient statistics for gmm prior (sum across conditional iid)
     dirichlet_stats = np.sum(label_stats, 0)
     niw_stats = np.tensordot(label_stats, gaussian_stats, [0, 0])
 
@@ -110,13 +115,25 @@ def meanfield_fixed_point(label_global, gaussian_globals, node_potentials, tol=1
     return label_stats
 
 def gaussian_meanfield(gaussian_globals, node_potentials, label_stats):
+    # Ref. Eq 39
+    # gaussian_globals = E_{q(\mu, \Sigma)}[t(\mu, \Sigma)] here q(\mu, \Sigma) is posterior which is NIW
+    # label_stats = E_{q(z)}[t(z)] -> categorical expected statistics
+    # stats = E_{q(z)}[t(z)] -> Gaussian expected statistics
+    # node_potentials = r(\phi, y)
+    
     global_potentials = np.tensordot(label_stats, gaussian_globals, [1, 0])
-    natparam = node_potentials + global_potentials
+    natparam = node_potentials + global_potentials #using Eq. 39
     stats = gaussian.expectedstats(natparam)
     kl = np.tensordot(node_potentials, stats, 3) - gaussian.logZ(natparam)
     return natparam, stats, kl
 
 def label_meanfield(label_global, gaussian_globals, gaussian_stats):
+    # Ref. Eq 39
+    # label_global = E_{q(\pi)}[t(\pi)] where q(\pi) is dirichlet and t(\pi) is {log\pi_i}
+    # stats = E_{q(z)}[t(z)] -> categorical expected statistics
+    # gaussian_stats = E_{q(x)}[t(x)] where q(x) is NIW and t(x) is [x, xxT]
+    # gaussian_globals = \eta_x^0(\theta)
+    
     node_potentials = np.tensordot(gaussian_stats, gaussian_globals, [[1,2], [1,2]])
     natparam = node_potentials + label_global
     stats = categorical.expectedstats(natparam)
@@ -124,6 +141,8 @@ def label_meanfield(label_global, gaussian_globals, gaussian_stats):
     return natparam, stats, kl
 
 def initialize_meanfield(label_global, node_potentials):
+    # K is the number of mixture components
+    # I think T is the batch size 
     T, K = node_potentials.shape[0], label_global.shape[0]
     return normalize(npr.rand(T, K))
 
