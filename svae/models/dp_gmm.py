@@ -3,9 +3,25 @@ import autograd.numpy as np
 import autograd.numpy.random as npr
 from itertools import repeat
 from functools import partial
+from scipy.stats import norm
 
 from svae.util import unbox, getval, flat, normalize
 from svae.distributions import dp, categorical, niw, gaussian
+
+from matplotlib.colors import LinearSegmentedColormap
+gridsize=75
+colors = np.array([
+[106,61,154],  # Dark colors
+[31,120,180],
+[51,160,44],
+[227,26,28],
+[255,127,0],
+[166,206,227],  # Light colors
+[178,223,138],
+[251,154,153],
+[253,191,111],
+[202,178,214],
+]) / 256.0
 
 ### inference functions for the SVAE interface
 
@@ -146,15 +162,18 @@ def make_plotter_2d(recognize, decode, data, num_clusters, params, plot_every):
     import matplotlib.pyplot as plt
     if data.shape[1] != 2: raise ValueError, 'make_plotter_2d only works with 2D data'
 
-    fig, (observation_axis, latent_axis) = plt.subplots(1, 2, figsize=(8,4))
+    fig, (observation_axis, latent_axis, density_axis) = plt.subplots(1, 3, figsize=(8,4))
     encode_mean, decode_mean = make_encoder_decoder(recognize, decode)
 
     observation_axis.plot(data[:,0], data[:,1], color='k', marker='.', linestyle='')
     observation_axis.set_aspect('equal')
     observation_axis.autoscale(False)
+    #density_axis.autoscale(False)
     latent_axis.set_aspect('equal')
+    density_axis.set_aspect('equal')
     observation_axis.axis('off')
     latent_axis.axis('off')
+    density_axis.axis('off')    
     fig.tight_layout()
 
     def plot_encoded_means(ax, params):
@@ -182,6 +201,42 @@ def make_plotter_2d(recognize, decode, data, num_clusters, params, plot_every):
         J = -2 * neghalfJ
         return np.linalg.solve(J, h), np.linalg.inv(J)
 
+    def get_hexbin_coords(ax, xlims, ylims, gridsize):
+        coords = ax.hexbin([], [], gridsize=gridsize, extent=tuple(xlims)+tuple(ylims)).get_offsets()
+        del ax.collections[-1]
+        return coords
+
+    def plot_transparent_hexbin(ax, func, xlims, ylims, gridsize, color):
+        cdict = {'red':   ((0., color[0], color[0]), (1., color[0], color[0])),
+                 'green': ((0., color[1], color[1]), (1., color[1], color[1])),
+                 'blue':  ((0., color[2], color[2]), (1., color[2], color[2])),
+                 'alpha': ((0., 0., 0.), (1., 1., 1.))}
+
+        new_cmap = LinearSegmentedColormap('Custom', cdict)
+        plt.register_cmap(cmap=new_cmap)
+
+        coords = get_hexbin_coords(ax, xlims, ylims, gridsize)
+        c = func(coords)
+
+        x, y = coords.T
+
+        ax.hexbin(x.ravel(), y.ravel(), c.ravel(),
+                  cmap=new_cmap, linewidths=0., edgecolors='none',
+                  gridsize=gridsize, vmin=0., vmax=1., zorder=1)
+
+    def decode_density(latent_locations, phi, decode, weight=1.):
+        mu, sigmasq = decode(phi, latent_locations)
+        #sigmasq = np.exp(log_sigmasq)
+
+        mu = mu if mu.ndim == 3 else mu[:,None,:]
+        sigmasq = sigmasq if sigmasq.ndim == 3 else sigmasq[:,None,:]
+
+        def density(r):
+            distances = np.sqrt(((r[None,:,:] - mu)**2 / sigmasq).sum(2))
+            return weight * (norm.pdf(distances) / np.sqrt(sigmasq).prod(2)).mean(0)
+
+        return density
+
     def plot_components(ax, params):
         pgm_params, loglike_params, recogn_params = params
         dp_natparams, niw_natparams = pgm_params
@@ -192,15 +247,35 @@ def make_plotter_2d(recognize, decode, data, num_clusters, params, plot_every):
         for weight, (mu, Sigma), line in zip(weights, components, lines):
             plot_ellipse(ax, weight, mu, Sigma, line)
 
+    def plot_density(density_ax, params):
+        pgm_params, loglike_params, recogn_params = params
+        dp_natparams, niw_natparams = pgm_params
+        normalize = lambda arr: np.minimum(1., arr / np.sum(arr) * num_clusters)
+        weights = normalize(np.exp(dp.var_expectedstats(dp_natparams)))
+        components = map(get_component, niw.expectedstats(niw_natparams))
+        num_samples = 200
+        #lines = repeat(None) if isinstance(ax, plt.Axes) else ax
+        idx = 0
+        for weight, (mu, Sigma) in zip(weights, components):
+            samples = npr.RandomState(0).multivariate_normal(mu, Sigma, num_samples)
+            density = decode_density(samples, loglike_params, decode, 75. * weight)
+            density_axis.plot(data[:,0], data[:,1], color='k', marker='.', linestyle='')
+            xlim, ylim = density_axis.get_xlim(), density_axis.get_ylim()
+            plot_transparent_hexbin(density_axis, density, xlim, ylim, gridsize, colors[idx % len(colors)])
+            idx+=1
+
     def plot(i, val, params, grad):
         print('{}: {}'.format(i, val))
         if (i % plot_every) == (-1 % plot_every):
             plot_encoded_means(latent_axis.lines[0], params)
             plot_components(latent_axis.lines[1:], params)
+            density_axis.cla()
+            plot_density(density_axis, params)
             plt.pause(0.1)
 
     plot_encoded_means(latent_axis, params)
     plot_components(latent_axis, params)
+    plot_density(density_axis, params)
     plt.pause(0.1)
 
     return plot

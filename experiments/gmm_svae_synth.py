@@ -1,5 +1,6 @@
 from __future__ import division, print_function
 import matplotlib.pyplot as plt
+import hickle as hkl
 import autograd.numpy as np
 import autograd.numpy.random as npr
 from autograd.optimizers import adam, sgd
@@ -23,17 +24,27 @@ def make_pinwheel_data(radial_std, tangential_std, num_classes, num_per_class, r
     return 10*npr.permutation(np.einsum('ti,tij->tj', features, rotations))
 
 if __name__ == "__main__":
-    npr.seed(1)
-    plt.ion()
+    #npr.seed(1)
+    seed_no = npr.randint(1000)
+    print(seed_no)
+    npr.seed(seed_no)
+    #plt.ion()
+    plt.autoscale(False)
 
-    num_clusters = 5           # number of clusters in pinwheel data
-    samples_per_cluster = 100  # number of samples per cluster in pinwheel
-    K = 15                     # number of components in mixture model
+    num_clusters = 3           # number of clusters in pinwheel data
+    samples_per_cluster = 500  # number of samples per cluster in pinwheel
+    K = 5                     # number of components in mixture model
     N = 2                      # number of latent dimensions
     P = 2                      # number of observation dimensions
 
     # generate synthetic data
-    data = make_pinwheel_data(0.3, 0.05, num_clusters, samples_per_cluster, 0.25)
+    #data = make_pinwheel_data(0.3, 0.05, num_clusters, samples_per_cluster, 0.25)
+    filename = '/Users/ybansal/Documents/PhD/Courses/CS282/Project/Code/Data/pinwheel_data.hkl'
+    file = open(filename, 'r')
+    storage_reloaded = hkl.load(file)
+    #data = hkl.load(file)
+    file.close()
+    data = storage_reloaded['data']
 
     # set prior natparam to something sparsifying but otherwise generic
     pgm_prior_params = init_pgm_param(K, N, alpha=0.05/K, niw_conc=0.5)
@@ -51,11 +62,21 @@ if __name__ == "__main__":
 
     # set up encoder/decoder and plotting
     encode_mean, decode_mean = make_encoder_decoder(recognize, decode)
-    plot = make_plotter_2d(recognize, decode, data, num_clusters, params, plot_every=100)
+    plot = make_plotter_2d(recognize, decode, data, num_clusters, params, plot_every=500)
 
     # instantiate svae gradient function
     gradfun = make_gradfun(run_inference, recognize, loglike, pgm_prior_params, data)
 
     # optimize
-    params = sgd(gradfun(batch_size=50, num_samples=1, natgrad_scale=1e4, callback=plot),
-                 params, num_iters=1000, step_size=1e-3)
+    params = sgd(gradfun(batch_size=50, num_samples=5, natgrad_scale=1, callback=plot),
+                 params, num_iters=5000)
+
+    # filename = '/Users/ybansal/Documents/PhD/Courses/CS282/Project/Code/Data/vae_adam.hkl'
+    # file = open(filename, 'w')
+    # hkl.dump(params, file)
+    # #data = hkl.load(file)
+    # file.close()
+
+    
+
+ 

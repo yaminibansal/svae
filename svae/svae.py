@@ -20,6 +20,7 @@ def make_gradfun(run_inference, recognize, loglike, pgm_prior, data,
         nn_potentials = recognize(recogn_params, get_batch(i))
         samples, saved.stats, global_kl, local_kl = \
             run_inference(pgm_prior, pgm_params, nn_potentials, num_samples)
+
         return (num_batches * loglike(loglike_params, samples, get_batch(i))
                 - global_kl - num_batches * local_kl) / num_datapoints
 

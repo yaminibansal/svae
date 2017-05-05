@@ -9,6 +9,7 @@ from svae.util import T
 # but numpy/scipy has no dpotri or solve_triangular that broadcasts
 
 def expectedstats(natparam):
+    #Ex shape = (50, 2), ExxT shape = (50, 2, 2), En shape = (50,)
     neghalfJ, h, _, _ = unpack_dense(natparam)
     J = -2*neghalfJ
     Ex = np.linalg.solve(J, h)
