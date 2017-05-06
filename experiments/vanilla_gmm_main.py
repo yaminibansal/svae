@@ -70,9 +70,12 @@ if __name__ == "__main__":
 
     num_clusters = 3           # number of clusters in pinwheel data
     samples_per_cluster = 100  # number of samples per cluster in pinwheel
-    K = 5                    # number of components in mixture model
+    K = 100                    # number of components in mixture model
     N = 2                      # number of latent dimensions
     P = 2                      # number of observation dimensions
+    num_iters = 10000
+    plot_every = 100
+    pred_ll = np.zeros(num_iters/plot_every)
 
     # generate/load synthetic data
     #data = make_pinwheel_data(0.3, 0.05, num_clusters, samples_per_cluster, 0.25)
@@ -82,6 +85,7 @@ if __name__ == "__main__":
     #data = hkl.load(file)
     file.close()
     data = storage_reloaded['data']
+    x_test = data
 
     # set prior natparam to something sparsifying but otherwise generic
     pgm_prior_params = init_pgm_param(K, N, alpha=0.05/K, niw_conc=.5)
@@ -91,21 +95,12 @@ if __name__ == "__main__":
     params = pgm_params
 
     # set up encoder/decoder and plotting
-    plot = make_plotter_2d(data, num_clusters, params, plot_every=100)
+    plot = make_plotter_2d(data, pred_ll, x_test, num_clusters, params, plot_every=plot_every)
 
     # instantiate svae gradient function
     gradfun = make_gradfun(run_inference, pgm_prior_params, data)
 
     # optimize
     params = sgd(gradfun(batch_size=50, num_samples=1, natgrad_scale=1, callback=plot),
-                  params, num_iters=10000)
+                  params, num_iters=num_iters)
 
-    # filename = '/Users/ybansal/Documents/PhD/Courses/CS282/Project/Code/Data/vae_adam.hkl'
-    # file = open(filename, 'w')
-    # hkl.dump(params, file)
-    # #data = hkl.load(file)
-    # file.close()
-
-    
-
- 

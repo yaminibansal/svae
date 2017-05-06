@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     num_clusters = 5           # number of clusters in pinwheel data
     samples_per_cluster = 100  # number of samples per cluster in pinwheel
-    T = 20                     # Truncation level for number of components
+    T = 50                     # Truncation level for number of components
     N = 2                      # number of latent dimensions
     P = 2                      # number of observation dimensions
     alpha = 1000               # scale parameter for DP

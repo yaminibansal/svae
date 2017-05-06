@@ -6,7 +6,7 @@ from functools import partial
 from scipy.stats import norm
 
 from svae.util import unbox, getval, flat, normalize
-from svae.distributions import dirichlet, categorical, niw, gaussian
+from svae.distributions import dirichlet, categorical, niw, gaussian, multivariate_t
 
 from matplotlib.colors import LinearSegmentedColormap
 gridsize=75
@@ -105,18 +105,36 @@ def label_meanfield(label_global, gaussian_globals, gaussian_suff_stats):
 
 ### plotting util for 2D
 
-def make_plotter_2d(data, num_clusters, params, plot_every):
+def make_plotter_2d(data, pred_ll, x_test, num_clusters, params, plot_every):
     
     import matplotlib.pyplot as plt
     if data.shape[1] != 2: raise ValueError, 'make_plotter_2d only works with 2D data'
 
-    fig, observation_axis = plt.subplots(1, 1, figsize=(8,4))
+    fig, (observation_axis, ll_axis) = plt.subplots(1, 2, figsize=(8,4))
 
     observation_axis.plot(data[:,0], data[:,1], color='k', marker='.', linestyle='')
     observation_axis.set_aspect('equal')
     observation_axis.autoscale(False)
     #observation_axis.axis('off')
     fig.tight_layout()
+
+    def posterior_pred_ll(x, nu, S, m, kappa):
+        d = m.shape[0]
+        return multivariate_t.multivariate_t_log(x, m, (kappa+1)*S/(kappa*(nu-d+1)), nu-d+1, d)    
+
+    def update_pred_ll(pred_ll, i, params, x_test):
+        dirichlet_natparams, niw_natparams = params
+        alpha = dirichlet_natparams + 1
+        K = alpha.shape[0]
+        exp_pi = alpha/np.sum(alpha)
+        S, m, kappa, nu = niw.natural_to_standard(niw_natparams)
+        N = x_test.shape[0]
+        pred_like = 0
+        for n in range(N):
+            for k in range(K):
+                pred_like += exp_pi[k]*np.exp(posterior_pred_ll(x_test[n], nu[k], S[k], m[k], kappa[k]))
+            pred_ll[i] += np.log(pred_like)
+        pred_ll[i]=pred_ll[i]/N 
 
     def plot_ellipse(ax, alpha, mean, cov, line=None):
         t = np.linspace(0, 2*np.pi, 100) % (2*np.pi)
@@ -146,10 +164,13 @@ def make_plotter_2d(data, num_clusters, params, plot_every):
             #print mu
             plot_ellipse(ax, weight, mu, Sigma, line)
 
-
     def plot(i, val, params, grad):
         print('{}: {}'.format(i, val))
         if (i % plot_every) == (-1 % plot_every):
+            update_pred_ll(pred_ll, (i+1)/plot_every-1, params, x_test)
+            ll_axis.cla()
+            ll_axis.plot(pred_ll[:(i+1)/plot_every], '-bo')
+            print('Predicted loglike='+str(pred_ll[(i+1)/plot_every-1]))
             plot_components(observation_axis.lines[1:], params)
             plt.pause(0.1)
 
